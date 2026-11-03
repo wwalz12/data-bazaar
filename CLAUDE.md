@@ -1,181 +1,205 @@
-# Data bargaining ABM (Stage 1)
+# Data Bazaar v0
 
 ## What this is
 
-A small agent-based simulation of a market where consumers sell access to
-their personal data to firms, with a software agent bargaining on each
-consumer's behalf. It exists to answer one question:
+A tiny simulation of one data sale. A consumer sells access to their
+personal data to a firm. Each side is represented by an AI agent. The
+agents send noisy reports to a "bazaar", which sets the price.
 
-> In a market for personal data with bargaining agents, does an agent
-> quality gap (richer consumers get better agents) make the distributional
-> problem worse?
+It asks two questions:
 
-The model is a thought experiment from a Substack post ("Privacy Brokers")
-turned into numbers. It is a toy. It illustrates an argument. It does not
-prove anything about the real world, and the README must say so.
+1. **Bargaining:** how does a gap in agent bargaining strength shift the
+   split of surplus between consumer and firm?
+2. **Learning:** how does a gap in how well an agent knows its principal's
+   true number cause lost deals, bad sales and bad buys?
 
-## Hard constraints
+It is a toy that illustrates an argument. It proves nothing about the real
+world, and the README must say so.
 
-- Pure Python. Only numpy, pandas, matplotlib, pytest. No Mesa, no NetLogo,
-  no scikit-learn, no torch.
-- No language models. No API calls. No network access of any kind.
-- Every decision in the model is a deterministic formula or an if-statement.
-  Randomness enters only through seeded initial draws (numpy default_rng).
-  Same seed, same output, always.
-- No classes except simple @dataclass containers. Logic lives in plain
-  functions. model.py stays under 200 lines.
-- Every function has a one-paragraph docstring saying what it computes and
-  which section of this file specifies it. Type hints everywhere.
-- Do not add features beyond this spec. If something seems missing, leave a
-  TODO comment and stop. The human decides.
+The owner is an econ student learning to code. Clarity beats cleverness.
+
+## Coding rules
+
+- Plain Python. Only numpy, pandas, matplotlib, scipy, pytest. No
+  frameworks, no network access, no language models.
+- Keep it simple and readable. Short functions, plain names, comments that
+  explain the economics as well as the code.
+- Model objects are small `@dataclass`es. A dataclass may have a short
+  method (e.g. `Agent.report`). No inheritance, no class hierarchies.
+- Every function has a short docstring saying what it computes.
+- Randomness only through `numpy.random.default_rng(seed)`. Same seed,
+  same output, always. Default seed: 0.
+- Do not add features beyond this spec. If something is ambiguous, ask the
+  human. If something seems missing, leave a `TODO` comment and ask.
+- Do not change any number in the model spec without asking.
 
 ## File layout
 
 ```
-model.py         consumers, firm, bargain(), run_once()
-experiments.py   parameter grid x seeds -> results/runs.csv
-plots.py         three figures -> figures/*.png
-tests/test_model.py
-README.md        what it is, how to run, what the plots show, limitations
-CLAUDE.md        this file
-results/         gitignored except .gitkeep
-figures/         committed
+bazaar/model.py      Consumer, Firm, Agent, Bazaar dataclasses
+bazaar/simulate.py   run one deal; run a scenario N times -> DataFrame
+bazaar/plots.py      the four figures
+run_v0.py            runs Step A, Step B, sweep; saves results/*.csv,
+                     figures/*.png; prints tables
+tests/test_v0.py
+README.md            one-page results write-up
+requirements.txt
+results/             CSV output
+figures/             PNG output
 ```
 
-## Model spec
+## The model
 
-All money is in dollars. "Three months of browsing and purchase history" is
-the unit being sold. One consumer sells at most once per run.
+One consumer, one firm, two AI agents, one bazaar.
 
-### Consumers (N = 1000)
+### Consumer
 
-Each consumer i gets, from one seeded rng:
-
-- `wealth_pct`: uniform(0, 1). Wealth percentile. 0 = poorest.
-- `privacy_taste`: uniform(0.2, 1.0). How much they dislike sharing.
-- `min_price` (reservation price): the lowest price at which they would
-  willingly sell.
-  `min_price = 2 + 12 * privacy_taste * wealth_pct`
-  So a poor, low-privacy consumer is near $2; a rich, high-privacy one
-  near $14. Poorer consumers have lower minimums because they need the
-  money more.
-- `spending_pct = 0.7 * wealth_pct + 0.3 * uniform(0, 1)`, clipped to
-  [0, 1]. How much they buy, which drives what their data is worth.
-- `service_value`: what access to the firm's service is worth to them.
-  `service_value = 8` for everyone in v1. (Later variant: proportional to
-  1 - wealth_pct, since a fixed service matters more to a poorer person.)
-- `agent_strength`: bargaining strength of their personal agent, one of
-  two tiers. `GOOD = 0.7`, `WEAK = 0.3`. Assignment rule is a treatment,
-  see Treatments.
+- Private reservation price `r = 4`: the lowest price they would accept
+  for their data.
 
 ### Firm
 
-One representative firm in v1 (multiple firms is a v2 idea, do not build).
+- Private value `v = 10`: the most it would pay for the data.
 
-- `firm_value_i = 10 + 20 * spending_pct_i`. What three months of consumer
-  i's data is worth to the firm. Range $10 to $30.
-- `broker_price`: what the firm would pay a data broker for roughly
-  equivalent data instead. This is the firm's outside option. Treatment
-  parameter.
-- The firm will never pay more than `ceiling_i = min(firm_value_i,
-  broker_price)`.
+### Agent
 
-### The bargain (one consumer, one firm)
+One class, two instances: the consumer's agent and the firm's agent. Each
+agent has a type, "strong" or "weak":
 
-```
-effective_min = min_price
-if exclusion_on:
-    effective_min = max(0, min_price - service_value)
-    # refusing means losing the service, so the consumer will accept
-    # less than they otherwise would
+| type   | sigma (knowledge noise) | b (bargaining strength) |
+|--------|-------------------------|-------------------------|
+| strong | 0.5                     | 2                       |
+| weak   | 3.0                     | 1                       |
 
-ceiling = min(firm_value, broker_price)
+- `sigma`: how well the agent knows its principal's true number. Smaller
+  is better.
+- `b`: bargaining strength.
+- The agent reports its principal's number plus noise:
+  - `r_hat = r + eps_c`, `eps_c ~ Normal(0, sigma_c^2)`
+  - `v_hat = v + eps_f`, `eps_f ~ Normal(0, sigma_f^2)`
 
-if ceiling <= effective_min:
-    no deal. price = None.
-else:
-    price = effective_min + agent_strength * (ceiling - effective_min)
-    deal.
-```
+### Bazaar
 
-`agent_strength` is the share of the available surplus the consumer's
-agent captures. 1.0 would mean the consumer gets everything up to the
-firm's ceiling; 0.0 means the consumer gets exactly their effective
-minimum.
+- Receives ONLY `r_hat`, `v_hat`, `b_c`, `b_f`.
+- `beta = b_c / (b_c + b_f)` (consumer's share of the reported surplus).
+- If `r_hat <= v_hat`: price `p = r_hat + beta * (v_hat - r_hat)`.
+  Otherwise: no deal.
+- Returns only the price or "no deal". The consumer and firm never see the
+  other side's true number or report.
 
-### Accounting per deal
+### Scoring (always with TRUE r and v, never the reports)
 
-- `true_surplus = firm_value - min_price` (uses the true minimum, not the
-  effective one, because that is the value actually created).
-- `consumer_gain = price - min_price`. Can be negative under exclusion:
-  the consumer sold below their real minimum because refusing cost them
-  the service. Flag these rows as `coerced = True`.
-- `firm_gain = firm_value - price`.
+- `CS = p - r`, `FS = v - p`. Both 0 if no deal.
+- **lost deal:** `r <= v` but no deal. `lost value = v - r` (else 0).
+- **bad sale:** deal and `p < r` (consumer sold below their minimum).
+- **bad buy:** deal and `p > v` (firm paid above its maximum).
+- Identity that must hold on every draw:
+  `CS + FS + lost value = v - r = 6`.
 
-### Baseline: today
+### Results log
 
-A run with no agents at all: every consumer for whom `firm_value > 0`
-"sells" at `price = 0` (they accept the terms of service). Consumer gain
-is `-min_price` for everyone. This is the comparison point.
+A separate record (the modeler's view) stores every number for each deal:
+`scenario, draw, r, v, sigma_c, sigma_f, r_hat, v_hat, b_c, b_f, beta,
+deal, p, CS, FS, lost value, outcome`. `draw` is the draw number within
+the scenario (0, 1, 2, ...). This is for testing and analysis. It is
+separate from what the bazaar returns.
 
-### Treatments (the parameter grid)
+Outcome labels: "good deal", "bad sale", "bad buy", "lost deal", plus
+"no deal" for no deal when `r > v` (walking away was correct). "no deal"
+cannot happen with r = 4, v = 10 but will in v1, so keep it.
 
-- `broker_price` in {6, 12, 25}. Low means the firm barely needs you.
-- `exclusion_on` in {False, True}.
-- `agent_assignment` in {"equal", "wealth_correlated"}:
-  - equal: every consumer gets GOOD with probability 0.5.
-  - wealth_correlated: consumer i gets GOOD with probability
-    `0.2 + 0.6 * wealth_pct_i`. Rich people can afford better agents.
-- Plus the baseline run.
+Rates (lost deal, bad sale, bad buy) are shares of ALL draws, not of
+completed deals.
 
-That is 3 x 2 x 2 = 12 settings plus baseline. Run each for seeds
-0..199. `run_once(params, seed)` returns one DataFrame with one row per
-consumer. `experiments.py` concatenates everything into
-`results/runs.csv` with columns for every parameter, the seed, and every
-per-consumer quantity above.
+## Benchmark
 
-### Outcome metrics (computed per run, then averaged across seeds)
+Full information, equal power: `p* = r + 0.5 (v - r) = 7`, `CS = 3`,
+`FS = 3`, total 6, no lost deals.
 
-- `consumer_share`: sum(consumer_gain over deals) / sum(true_surplus over
-  deals). Fraction of created value the consumers keep.
-- `sell_rate_by_quintile`: fraction of consumers who sold, by wealth
-  quintile (0-20%, 20-40%, ...).
-- `consumer_share_by_quintile`: same as consumer_share but within quintile.
-- `coerced_rate_by_quintile`: fraction of sales that were coerced, by
-  quintile. Only nonzero when exclusion_on.
+## Experiments
 
-### The three figures
+Four scenarios: consumer agent {strong, weak} x firm agent {strong, weak}.
+Naming: first word = consumer's agent, second = firm's agent.
 
-1. `fig1_share_vs_broker.png`: consumer_share (y) against broker_price (x),
-   one line for exclusion off, one for exclusion on. Equal agents.
-2. `fig2_sell_rate_by_quintile.png`: grouped bars, sell rate by wealth
-   quintile, exclusion off vs on. broker_price = 12, equal agents.
-3. `fig3_share_by_quintile_agents.png`: consumer_share by wealth quintile,
-   equal agents vs wealth_correlated agents. broker_price = 12, exclusion
-   off. This is the headline figure for the research question.
+### Step A: bargaining only
 
-Every figure: matplotlib, one panel, axis labels with units, a one-line
-title, no seaborn, no styling beyond defaults. Error bars or shaded bands
-from the across-seed standard deviation.
+`sigma = 0` for all agents; `beta` from `b`. Deterministic. Must match
+exactly:
 
-## Tests (tests/test_model.py)
+| scenario      | beta | p | CS | FS |
+|---------------|------|---|----|----|
+| strong/strong | 1/2  | 7 | 3  | 3  |
+| weak/weak     | 1/2  | 7 | 3  | 3  |
+| weak/strong   | 1/3  | 6 | 2  | 4  |
+| strong/weak   | 2/3  | 8 | 4  | 2  |
 
-- Same seed twice gives identical DataFrames.
-- When broker_price is below every consumer's min_price and exclusion is
-  off, there are zero deals.
-- Every deal price lies in [effective_min, ceiling].
-- With exclusion on, effective_min is never above min_price.
-- With agent_strength = 1.0, price equals ceiling for every deal.
-- Baseline run has consumer_share exactly 0 (or -inf guarded: report
-  consumer_gain sum instead).
+### Step B: learning only
 
-## Working style
+`beta = 1/2` in every scenario; `sigma` from type. 100,000 draws per
+scenario, fixed seed. Report per scenario: lost deal rate, bad sale rate,
+bad buy rate, mean CS, mean FS, mean total, std of CS.
 
-- Build in this order: model.py, tests, experiments.py, plots.py, README.
-  Run tests after model.py and stop if any fail.
-- After building, run `python experiments.py --quick` (3 seeds) and
-  `python plots.py`, then report what the three figures show in plain
-  words. Do not interpret beyond what is on the axes.
-- Ask before changing any number in the Model spec. Those are the human's
-  decisions.
-- Keep comments rare. The docstrings plus this file are the documentation.
+Reference (earlier 2M-draw run, approximate):
+
+| scenario      | lost | bad sale | bad buy | CS   | FS   |
+|---------------|------|----------|---------|------|------|
+| strong/strong | 0.0% |          |         | 3.00 | 3.00 |
+| weak/strong   | 2.4% | 2.4%     | 0.7%    | 2.84 | 3.01 |
+| strong/weak   | 2.4% | 0.7%     | 2.4%    | 3.01 | 2.84 |
+| weak/weak     | 7.8% | 7.2%     | 7.3%    | 2.77 | 2.76 |
+
+Check: lost deal rate should match
+`Phi(-(v - r) / sqrt(sigma_c^2 + sigma_f^2))`, Phi = standard normal CDF.
+
+### Noise sweep
+
+Both agents use the same sigma, from 0 to 6 in steps of 0.25, `beta = 1/2`.
+Plot lost deal rate, simulated vs formula.
+
+## Figures
+
+PNG in `figures/`. Axes in dollars where they are money. Title = one
+sentence stating the finding.
+
+1. `outcome_map.png`: 2,000 draws of `(r_hat, v_hat)` in weak/weak (Step B
+   settings), colored by outcome (good deal, bad sale, bad buy, lost deal).
+   Draw region boundaries: `r_hat = v_hat` (above it on the `r_hat` side =
+   no deal); `r_hat + v_hat = 8` (below = bad sale, since `p < r`);
+   `r_hat + v_hat = 20` (above = bad buy, since `p > v`). Mark the true
+   point `(r, v) = (4, 10)`.
+2. `surplus_split.png`: one stacked bar per scenario (Step B) plus the
+   benchmark: mean CS + mean FS + mean lost value, so every bar totals $6.
+3. `consumer_gain_hist.png`: histogram of CS on completed deals, strong vs
+   weak consumer agent (firm agent strong, Step B settings), vertical line
+   at 0.
+4. `noise_sweep.png`: lost deal rate vs sigma, simulated dots and formula
+   line.
+
+## Tests (tests/test_v0.py)
+
+- Step A matches the table exactly.
+- Per-draw identity `CS + FS + lost value = 6` holds on every draw.
+- Step B lost deal rate is within 0.5 percentage points of the formula.
+
+## README.md
+
+One page. Title "Data Bazaar v0", one-line summary, the model in GitHub
+math (`$$` blocks), Step A table, Step B table, the four figures with
+one-line captions, "What I learned" (TODO placeholders for the human to
+write), "Next steps", "Related work":
+
+- Karten, Crow & Jin (2026), "Agent Bazaar: Enabling Economic Alignment
+  in Multi-Agent Marketplaces", Princeton.
+- Augusto Gonzalez-Bonorino, "Privacy Brokers" (Substack, Sept 2026).
+
+Plus a short limitations note: this is a toy.
+
+## How to work with the human
+
+1. Build `bazaar/model.py` plus a function that runs ONE deal and prints
+   every step (`r, r_hat, v, v_hat, beta, p, CS, FS, outcome`). Show 5
+   example deals. Stop and wait.
+2. Build the rest, run the tests, run `run_v0.py`, show the printed tables.
+3. After each file, explain what it does in plain language. Define every
+   term used.
+4. Nothing beyond this spec. Ask when something is ambiguous.

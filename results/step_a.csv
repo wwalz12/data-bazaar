@@ -1,0 +1,5 @@
+scenario,beta,p,CS,FS
+strong/strong,0.5,7.0,3.0,3.0
+weak/strong,0.3333333333333333,6.0,2.0,4.0
+strong/weak,0.6666666666666666,8.0,4.0,2.0
+weak/weak,0.5,7.0,3.0,3.0

@@ -1,0 +1,5 @@
+# Every Step B draw (62 MB). Recreate with: python3 run_v0.py
+results/step_b_draws.csv
+
+__pycache__/
+.pytest_cache/

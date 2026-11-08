@@ -104,10 +104,10 @@ def plot_consumer_gain_hist(strong_c: pd.DataFrame, weak_c: pd.DataFrame, path: 
     ax.hist(cs_weak, bins=bins, alpha=0.6, label="weak consumer agent")
     ax.axvline(0, color="black", lw=1, label="CS = 0 (price = r)")
 
-    below_weak = (cs_weak < 0).mean()
-    below_strong = (cs_strong < 0).mean()
-    ax.set_title(f"A weak consumer agent sells below the minimum in {below_weak:.1%} of deals, "
-                 f"a strong one in {below_strong:.2%}", fontsize=11)
+    # The bad-sale rate goes in the README caption, not the title: its size
+    # depends on the noise shape (see the Robustness section).
+    ax.set_title("A weak consumer agent makes the consumer's gain far more spread out, "
+                 "including losses", fontsize=11)
     ax.set_xlabel("Consumer surplus CS = p - r on completed deals ($)")
     ax.set_ylabel("Number of deals")
     ax.legend(fontsize=8)

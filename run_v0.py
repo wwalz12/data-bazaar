@@ -14,6 +14,7 @@ import pandas as pd
 from bazaar.model import Agent, Consumer, Firm, make_agent
 from bazaar.plots import (plot_consumer_gain_hist, plot_noise_sweep,
                           plot_outcome_map, plot_surplus_split)
+from bazaar.robustness import run_robustness
 from bazaar.simulate import lost_deal_formula, run_scenario, summarize
 
 SEED = 0
@@ -104,6 +105,15 @@ def main() -> None:
     print(f"\nNoise sweep: same sigma for both agents (beta = 1/2, {N_DRAWS:,} draws each)")
     print(sweep.to_string(index=False, formatters={
         "sigma": "{:.2f}".format, "lost_rate": pct, "lost_rate_formula": pct}))
+
+    # Robustness: other noise shapes and deal-zone widths
+    robust = run_robustness()
+    robust.to_csv("results/robustness.csv", index=False)
+    print(f"\nRobustness: weak consumer / strong firm agent (beta = 1/2, {N_DRAWS:,} draws each)")
+    print(robust.to_string(index=False, formatters={
+        "width": "{:g}".format, "v": "{:g}".format, "sigma_c": "{:g}".format,
+        "sigma_f": "{:g}".format, "lost_rate": pct, "bad_sale_rate": pct,
+        "bad_buy_rate": pct, "mean_CS": money, "mean_FS": money, "benchmark_CS": money}))
 
     # Figures
     plot_outcome_map(logs["weak/weak"].head(2000), R, V, "figures/outcome_map.png")

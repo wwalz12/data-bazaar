@@ -58,10 +58,39 @@ Rates are shares of all draws. The formula column is $\Phi\left(-\frac{v - r}{\s
 *Mean CS, FS and lost value per scenario. Every bar totals $6.*
 
 ![Consumer gain histogram](figures/consumer_gain_hist.png)
-*Consumer surplus on completed deals with a strong firm agent: a weak consumer agent gives a much wider spread, including losses.*
+*Consumer surplus on completed deals with a strong firm agent. With normal noise, a weak consumer agent sells below the minimum in 2.47% of completed deals (2.41% of all draws), a strong one in 0%. That rate depends on the noise shape: with clipped or lognormal noise it is 0% here, because a bad sale would need a negative report (see Robustness).*
 
 ![Noise sweep](figures/noise_sweep.png)
 *Lost deal rate as both agents get noisier: the simulation tracks the formula.*
+
+## Robustness
+
+Does the learning result (Step B) depend on the normal noise or on the size of the deal zone? Every case: weak consumer agent vs strong firm agent ($\sigma_f = 0.5$), $\beta = 1/2$, $r = 4$, 100,000 draws, seed 0. The noise shape is applied to both agents' reports. Benchmark CS $= (v - r)/2$.
+
+- **a) Noise shape** ($v = 10$, $\sigma_c = 3$). *Normal* is the baseline. *Clipped* is the normal report, floored at 0 dollars. *Lognormal* is $\text{true} \cdot e^{z}$, $z \sim N(-s^2/2, s^2)$, $s = \sqrt{\ln(1 + (\sigma/\text{true})^2)}$: same mean and same dollar standard deviation as the normal report, but always positive and skewed right.
+- **b) Grid** (normal noise): deal-zone width $v - r \in \{2, 6, 10\}$, so $v \in \{6, 10, 14\}$; $\sigma_c \in \{1, 2, 3, 5\}$.
+
+| case | noise | $v - r$ | $\sigma_c$ | lost deals | bad sales | bad buys | mean CS | mean FS | benchmark CS |
+|---|---|---|---|---|---|---|---|---|---|
+| a | normal | 6 | 3 | 2.49% | 2.41% | 0.69% | 2.84 | 3.01 | 3.00 |
+| a | clipped | 6 | 3 | 2.49% | 0.00% | 0.69% | 2.91 | 2.94 | 3.00 |
+| a | lognormal | 6 | 3 | 4.54% | 0.00% | 0.57% | 2.65 | 3.07 | 3.00 |
+| b | normal | 2 | 1 | 3.74% | 3.65% | 2.62% | 0.94 | 0.99 | 1.00 |
+| b | normal | 2 | 2 | 16.73% | 16.49% | 4.74% | 0.61 | 1.06 | 1.00 |
+| b | normal | 2 | 3 | 25.72% | 25.55% | 4.09% | 0.28 | 1.21 | 1.00 |
+| b | normal | 2 | 5 | 34.63% | 34.56% | 2.91% | -0.25 | 1.56 | 1.00 |
+| b | normal | 6 | 1 | 0.00% | 0.00% | 0.00% | 3.00 | 3.00 | 3.00 |
+| b | normal | 6 | 2 | 0.21% | 0.19% | 0.11% | 2.99 | 3.00 | 3.00 |
+| b | normal | 6 | 3 | 2.49% | 2.41% | 0.69% | 2.84 | 3.01 | 3.00 |
+| b | normal | 6 | 5 | 11.67% | 11.56% | 1.49% | 2.17 | 3.13 | 3.00 |
+| b | normal | 10 | 1 | 0.00% | 0.00% | 0.00% | 5.00 | 5.00 | 5.00 |
+| b | normal | 10 | 2 | 0.00% | 0.00% | 0.00% | 5.00 | 5.00 | 5.00 |
+| b | normal | 10 | 3 | 0.06% | 0.05% | 0.01% | 5.00 | 5.00 | 5.00 |
+| b | normal | 10 | 5 | 2.39% | 2.33% | 0.42% | 4.74 | 5.02 | 5.00 |
+
+The size of the weak side's loss depends on noise relative to the deal zone, but the direction holds in every case: the weak consumer never comes out ahead of the benchmark. Where the noise is small relative to the zone (no lost deals), the gap is zero to within simulation error; wherever deals are lost, the weak consumer keeps less than the benchmark and less than the firm.
+
+Two things to notice. Clipping removes bad sales here but leaves lost deals unchanged, and the consumer still ends below 3 dollars. Lognormal noise also removes bad sales, but its right skew (big over-reports) nearly doubles lost deals, so the weak consumer does worse than under normal noise. The width 6, $\sigma_c = 3$ grid cell reproduces the baseline weak/strong row exactly.
 
 ## What I learned
 

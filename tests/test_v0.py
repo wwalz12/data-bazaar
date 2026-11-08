@@ -56,3 +56,27 @@ def test_step_b_lost_rate_matches_formula(kind_c: str, kind_f: str) -> None:
     simulated = (df["outcome"] == "lost deal").mean()
     formula = lost_deal_formula(4.0, 10.0, agent_c.sigma, agent_f.sigma)
     assert abs(simulated - formula) < 0.005
+
+
+def test_robustness_grid_reproduces_baseline() -> None:
+    """Robustness grid cell (normal, v - r = 6, sigma_c = 3) gives exactly the
+    Step B weak/strong row: same seed, same draws, same numbers."""
+    from bazaar.robustness import run_case
+    from bazaar.simulate import summarize
+
+    robust = summarize(run_case("normal", 4.0, 10.0, 3.0, 0.5, n_draws=20_000))
+    agent_c = make_agent("weak", b=1.0)
+    agent_f = make_agent("strong", b=1.0)
+    baseline = summarize(run_scenario("weak/strong", agent_c, agent_f, n_draws=20_000))
+    for key in ["lost_rate", "bad_sale_rate", "bad_buy_rate", "mean_CS", "mean_FS"]:
+        assert robust[key] == baseline[key]
+
+
+@pytest.mark.parametrize("shape", ["normal", "clipped", "lognormal"])
+def test_robustness_identity_every_draw(shape: str) -> None:
+    """CS + FS + lost value = v - r on every draw, for every noise shape."""
+    from bazaar.robustness import run_case
+
+    df = run_case(shape, 4.0, 10.0, 3.0, 0.5, n_draws=10_000)
+    total = df["CS"] + df["FS"] + df["lost_value"]
+    assert (abs(total - 6.0) < 1e-9).all()
